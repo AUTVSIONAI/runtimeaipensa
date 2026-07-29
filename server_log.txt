@@ -1,0 +1,8 @@
+﻿python : <frozen runpy>:130: RuntimeWarning: 'runtime.api.server' found in sys.modules after import of package 
+'runtime.api', but prior to execution of 'runtime.api.server'; this may result in unpredictable behaviour
+No linha:1 caractere:329
++ ...  cd C:\OPENMANUS\OpenManus; python -m runtime.api.server 2>&1 | Tee-O ...
++                                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (<frozen runpy>:...table behaviour:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 

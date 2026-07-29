@@ -2,7 +2,7 @@ import json
 import threading
 import tomllib
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -89,6 +89,10 @@ class BrowserSettings(BaseModel):
     max_content_length: int = Field(
         2000, description="Maximum length for content retrieval operations"
     )
+    runtime: str = Field(default="local", description="Browser runtime: 'local' or 'daytona'")
+    new_context_config: Optional[Any] = Field(
+        None, description="Browser context configuration"
+    )
 
 
 class SandboxSettings(BaseModel):
@@ -106,7 +110,7 @@ class SandboxSettings(BaseModel):
 
 
 class DaytonaSettings(BaseModel):
-    daytona_api_key: str
+    daytona_api_key: Optional[str] = None
     daytona_server_url: Optional[str] = Field(
         "https://app.daytona.io/api", description=""
     )

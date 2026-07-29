@@ -1,21 +1,23 @@
 import asyncio
+import os
+from pathlib import Path
 from typing import Optional, TypeVar
 
 from pydantic import Field
 
-from app.daytona.tool_base import Sandbox, SandboxToolsBase
 from app.tool.base import ToolResult
 from app.utils.files_utils import clean_path, should_exclude_file
 from app.utils.logger import logger
+from app.tool.local_tool_base import LocalToolsBase
 
 
 Context = TypeVar("Context")
 
 _FILES_DESCRIPTION = """\
-A sandbox-based file system tool that allows file operations in a secure sandboxed environment.
+A local file system tool that allows file operations on the local machine.
 * This tool provides commands for creating, reading, updating, and deleting files in the workspace
-* All operations are performed relative to the /workspace directory for security
-* Use this when you need to manage files, edit code, or manipulate file contents in a sandbox
+* All operations are performed relative to the workspace directory for security
+* Use this when you need to manage files, edit code, or manipulate file contents locally
 * Each action requires specific parameters as defined in the tool's dependencies
 Key capabilities include:
 * File creation: Create new files with specified content and permissions
@@ -25,8 +27,8 @@ Key capabilities include:
 """
 
 
-class SandboxFilesTool(SandboxToolsBase):
-    name: str = "sandbox_files"
+class SandboxFilesTool(LocalToolsBase):
+    name: str = "local_files"
     description: str = _FILES_DESCRIPTION
     parameters: dict = {
         "type": "object",
@@ -43,7 +45,7 @@ class SandboxFilesTool(SandboxToolsBase):
             },
             "file_path": {
                 "type": "string",
-                "description": "Path to the file, relative to /workspace (e.g., 'src/main.py')",
+                "description": "Path to the file, relative to workspace (e.g., 'src/main.py')",
             },
             "file_contents": {
                 "type": "string",
@@ -72,66 +74,63 @@ class SandboxFilesTool(SandboxToolsBase):
         },
     }
     SNIPPET_LINES: int = Field(default=4, exclude=True)
-    # workspace_path: str = Field(default="/workspace", exclude=True)
-    # sandbox: Optional[Sandbox] = Field(default=None, exclude=True)
 
     def __init__(
-        self, sandbox: Optional[Sandbox] = None, thread_id: Optional[str] = None, **data
+        self, thread_id: Optional[str] = None, **data
     ):
-        """Initialize with optional sandbox and thread_id."""
+        """Initialize with optional thread_id."""
         super().__init__(**data)
-        if sandbox is not None:
-            self._sandbox = sandbox
 
     def clean_path(self, path: str) -> str:
-        """Clean and normalize a path to be relative to /workspace"""
+        """Clean and normalize a path to be relative to workspace."""
         return clean_path(path, self.workspace_path)
 
     def _should_exclude_file(self, rel_path: str) -> bool:
-        """Check if a file should be excluded based on path, name, or extension"""
+        """Check if a file should be excluded based on path, name, or extension."""
         return should_exclude_file(rel_path)
 
     def _file_exists(self, path: str) -> bool:
-        """Check if a file exists in the sandbox"""
+        """Check if a file exists locally."""
         try:
-            self.sandbox.fs.get_file_info(path)
-            return True
+            full_path = Path(path)
+            return full_path.exists() and full_path.is_file()
         except Exception:
             return False
 
     async def get_workspace_state(self) -> dict:
-        """Get the current workspace state by reading all files"""
+        """Get the current workspace state by reading all files."""
         files_state = {}
         try:
-            # Ensure sandbox is initialized
-            await self._ensure_sandbox()
+            workspace = Path(self.workspace_path)
+            if not workspace.exists():
+                return {}
 
-            files = self.sandbox.fs.list_files(self.workspace_path)
-            for file_info in files:
-                rel_path = file_info.name
+            for file_path in workspace.rglob("*"):
+                if file_path.is_file():
+                    rel_path = str(file_path.relative_to(workspace))
 
-                # Skip excluded files and directories
-                if self._should_exclude_file(rel_path) or file_info.is_dir:
-                    continue
+                    # Skip excluded files
+                    if self._should_exclude_file(rel_path):
+                        continue
 
-                try:
-                    full_path = f"{self.workspace_path}/{rel_path}"
-                    content = self.sandbox.fs.download_file(full_path).decode()
-                    files_state[rel_path] = {
-                        "content": content,
-                        "is_dir": file_info.is_dir,
-                        "size": file_info.size,
-                        "modified": file_info.mod_time,
-                    }
-                except Exception as e:
-                    print(f"Error reading file {rel_path}: {e}")
-                except UnicodeDecodeError:
-                    print(f"Skipping binary file: {rel_path}")
+                    try:
+                        content = file_path.read_text(encoding="utf-8")
+                        stat = file_path.stat()
+                        files_state[rel_path] = {
+                            "content": content,
+                            "is_dir": False,
+                            "size": stat.st_size,
+                            "modified": stat.st_mtime,
+                        }
+                    except UnicodeDecodeError:
+                        logger.warning(f"Skipping binary file: {rel_path}")
+                    except Exception as e:
+                        logger.warning(f"Error reading file {rel_path}: {e}")
 
             return files_state
 
         except Exception as e:
-            print(f"Error getting workspace state: {str(e)}")
+            logger.error(f"Error getting workspace state: {str(e)}")
             return {}
 
     async def execute(
@@ -145,16 +144,7 @@ class SandboxFilesTool(SandboxToolsBase):
         **kwargs,
     ) -> ToolResult:
         """
-        Execute a file operation in the sandbox environment.
-        Args:
-            action: The file operation to perform
-            file_path: Path to the file relative to /workspace
-            file_contents: Content to write to the file
-            old_str: Text to be replaced (for str_replace)
-            new_str: Replacement text (for str_replace)
-            permissions: File permissions in octal format
-        Returns:
-            ToolResult with the operation's output or error
+        Execute a file operation in the local environment.
         """
         async with asyncio.Lock():
             try:
@@ -204,44 +194,28 @@ class SandboxFilesTool(SandboxToolsBase):
     async def _create_file(
         self, file_path: str, file_contents: str, permissions: str = "644"
     ) -> ToolResult:
-        """Create a new file with the provided contents"""
+        """Create a new file with the provided contents."""
         try:
-            # Ensure sandbox is initialized
-            await self._ensure_sandbox()
-
             file_path = self.clean_path(file_path)
-            full_path = f"{self.workspace_path}/{file_path}"
-            if self._file_exists(full_path):
+            full_path = Path(self.workspace_path) / file_path
+
+            if full_path.exists():
                 return self.fail_response(
                     f"File '{file_path}' already exists. Use full_file_rewrite to modify existing files."
                 )
 
             # Create parent directories if needed
-            parent_dir = "/".join(full_path.split("/")[:-1])
-            if parent_dir:
-                self.sandbox.fs.create_folder(parent_dir, "755")
+            full_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Write the file content
-            self.sandbox.fs.upload_file(file_contents.encode(), full_path)
-            self.sandbox.fs.set_file_permissions(full_path, permissions)
+            full_path.write_text(file_contents, encoding="utf-8")
+            # Set permissions (on Unix-like systems)
+            try:
+                full_path.chmod(int(permissions, 8))
+            except Exception:
+                pass  # Ignore permission errors on Windows
 
             message = f"File '{file_path}' created successfully."
-
-            # Check if index.html was created and add 8080 server info (only in root workspace)
-            if file_path.lower() == "index.html":
-                try:
-                    website_link = self.sandbox.get_preview_link(8080)
-                    website_url = (
-                        website_link.url
-                        if hasattr(website_link, "url")
-                        else str(website_link).split("url='")[1].split("'")[0]
-                    )
-                    message += f"\n\n[Auto-detected index.html - HTTP server available at: {website_url}]"
-                    message += "\n[Note: Use the provided HTTP server URL above instead of starting a new server]"
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to get website URL for index.html: {str(e)}"
-                    )
 
             return self.success_response(message)
         except Exception as e:
@@ -250,17 +224,14 @@ class SandboxFilesTool(SandboxToolsBase):
     async def _str_replace(
         self, file_path: str, old_str: str, new_str: str
     ) -> ToolResult:
-        """Replace specific text in a file"""
+        """Replace specific text in a file."""
         try:
-            # Ensure sandbox is initialized
-            await self._ensure_sandbox()
-
             file_path = self.clean_path(file_path)
-            full_path = f"{self.workspace_path}/{file_path}"
-            if not self._file_exists(full_path):
+            full_path = Path(self.workspace_path) / file_path
+            if not full_path.exists():
                 return self.fail_response(f"File '{file_path}' does not exist")
 
-            content = self.sandbox.fs.download_file(full_path).decode()
+            content = full_path.read_text(encoding="utf-8")
             old_str = old_str.expandtabs()
             new_str = new_str.expandtabs()
 
@@ -279,7 +250,7 @@ class SandboxFilesTool(SandboxToolsBase):
 
             # Perform replacement
             new_content = content.replace(old_str, new_str)
-            self.sandbox.fs.upload_file(new_content.encode(), full_path)
+            full_path.write_text(new_content, encoding="utf-8")
 
             # Show snippet around the edit
             replacement_line = content.split(old_str)[0].count("\n")
@@ -297,65 +268,47 @@ class SandboxFilesTool(SandboxToolsBase):
     async def _full_file_rewrite(
         self, file_path: str, file_contents: str, permissions: str = "644"
     ) -> ToolResult:
-        """Completely rewrite an existing file with new content"""
+        """Completely rewrite an existing file with new content."""
         try:
-            # Ensure sandbox is initialized
-            await self._ensure_sandbox()
-
             file_path = self.clean_path(file_path)
-            full_path = f"{self.workspace_path}/{file_path}"
-            if not self._file_exists(full_path):
+            full_path = Path(self.workspace_path) / file_path
+            if not full_path.exists():
                 return self.fail_response(
                     f"File '{file_path}' does not exist. Use create_file to create a new file."
                 )
 
-            self.sandbox.fs.upload_file(file_contents.encode(), full_path)
-            self.sandbox.fs.set_file_permissions(full_path, permissions)
+            full_path.write_text(file_contents, encoding="utf-8")
+            try:
+                full_path.chmod(int(permissions, 8))
+            except Exception:
+                pass
 
             message = f"File '{file_path}' completely rewritten successfully."
-
-            # Check if index.html was rewritten and add 8080 server info (only in root workspace)
-            if file_path.lower() == "index.html":
-                try:
-                    website_link = self.sandbox.get_preview_link(8080)
-                    website_url = (
-                        website_link.url
-                        if hasattr(website_link, "url")
-                        else str(website_link).split("url='")[1].split("'")[0]
-                    )
-                    message += f"\n\n[Auto-detected index.html - HTTP server available at: {website_url}]"
-                    message += "\n[Note: Use the provided HTTP server URL above instead of starting a new server]"
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to get website URL for index.html: {str(e)}"
-                    )
 
             return self.success_response(message)
         except Exception as e:
             return self.fail_response(f"Error rewriting file: {str(e)}")
 
     async def _delete_file(self, file_path: str) -> ToolResult:
-        """Delete a file at the given path"""
+        """Delete a file at the given path."""
         try:
-            # Ensure sandbox is initialized
-            await self._ensure_sandbox()
-
             file_path = self.clean_path(file_path)
-            full_path = f"{self.workspace_path}/{file_path}"
-            if not self._file_exists(full_path):
+            full_path = Path(self.workspace_path) / file_path
+            if not full_path.exists():
                 return self.fail_response(f"File '{file_path}' does not exist")
 
-            self.sandbox.fs.delete_file(full_path)
+            full_path.unlink()
             return self.success_response(f"File '{file_path}' deleted successfully.")
         except Exception as e:
             return self.fail_response(f"Error deleting file: {str(e)}")
 
     async def cleanup(self):
-        """Clean up sandbox resources."""
+        """Clean up local resources (no-op for local tools)."""
+        pass
 
     @classmethod
-    def create_with_context(cls, context: Context) -> "SandboxFilesTool[Context]":
-        """Factory method to create a SandboxFilesTool with a specific context."""
+    def create_with_context(cls, context: Context) -> "LocalFilesTool[Context]":
+        """Factory method to create a LocalFilesTool with a specific context."""
         raise NotImplementedError(
-            "create_with_context not implemented for SandboxFilesTool"
+            "create_with_context not implemented for LocalFilesTool"
         )

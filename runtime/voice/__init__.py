@@ -1,0 +1,60 @@
+"""
+Voice Runtime Module
+
+Provides speech-to-text, text-to-speech, voice activity detection,
+speaker identification, and voice command processing capabilities.
+"""
+
+from runtime.voice.module import (
+    VoiceModule,
+    AudioData,
+    AudioFormat,
+    VoiceModel,
+    VoiceActivityStatus,
+    SpeakerGender,
+    SpeakerAgeGroup,
+    TranscriptionResult,
+    SpeechSynthesisResult,
+    VoiceActivityResult,
+    SpeakerProfile,
+    SpeakerIdentificationResult,
+    VoiceCommand,
+    VoiceBackend,
+    STTBackend,
+    TTSBackend,
+    VADBackend,
+    SpeakerBackend,
+    VoiceCommandBackend,
+    WhisperSTTBackend,
+    MockTTSBackend,
+    SileroVADBackend,
+    MockSpeakerBackend,
+    MockVoiceCommandBackend,
+)
+
+__all__ = [
+    "VoiceModule",
+    "AudioData",
+    "AudioFormat",
+    "VoiceModel",
+    "VoiceActivityStatus",
+    "SpeakerGender",
+    "SpeakerAgeGroup",
+    "TranscriptionResult",
+    "SpeechSynthesisResult",
+    "VoiceActivityResult",
+    "SpeakerProfile",
+    "SpeakerIdentificationResult",
+    "VoiceCommand",
+    "VoiceBackend",
+    "STTBackend",
+    "TTSBackend",
+    "VADBackend",
+    "SpeakerBackend",
+    "VoiceCommandBackend",
+    "WhisperSTTBackend",
+    "MockTTSBackend",
+    "SileroVADBackend",
+    "MockSpeakerBackend",
+    "MockVoiceCommandBackend",
+]

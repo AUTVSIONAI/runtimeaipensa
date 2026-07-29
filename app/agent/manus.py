@@ -13,6 +13,7 @@ from app.tool.browser_use_tool import BrowserUseTool
 from app.tool.mcp import MCPClients, MCPClientTool
 from app.tool.python_execute import PythonExecute
 from app.tool.str_replace_editor import StrReplaceEditor
+from app.browser.runtime import create_browser_runtime
 
 
 class Manus(ToolCallAgent):
@@ -34,7 +35,7 @@ class Manus(ToolCallAgent):
     available_tools: ToolCollection = Field(
         default_factory=lambda: ToolCollection(
             PythonExecute(),
-            BrowserUseTool(),
+            # BrowserUseTool will be added dynamically based on runtime config
             StrReplaceEditor(),
             AskHuman(),
             Terminate(),
@@ -61,8 +62,20 @@ class Manus(ToolCallAgent):
         """Factory method to create and properly initialize a Manus instance."""
         instance = cls(**kwargs)
         await instance.initialize_mcp_servers()
+        await instance._initialize_browser_tool()
         instance._initialized = True
         return instance
+
+    async def _initialize_browser_tool(self):
+        """Initialize the browser tool based on configuration."""
+        browser_runtime = create_browser_runtime()
+        await browser_runtime.initialize()
+
+        # Create BrowserUseTool wrapping the runtime
+        browser_tool = BrowserUseTool(browser_runtime=browser_runtime)
+
+        # Add to available tools
+        self.available_tools.add_tools(browser_tool)
 
     async def initialize_mcp_servers(self) -> None:
         """Initialize connections to configured MCP servers."""

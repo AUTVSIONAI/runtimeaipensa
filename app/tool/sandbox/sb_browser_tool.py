@@ -2,21 +2,18 @@ import base64
 import io
 import json
 import traceback
-from typing import Optional  # Add this import for Optional
+from typing import Any, Optional
 
 from PIL import Image
 from pydantic import Field
 
-from app.daytona.tool_base import (  # Ensure Sandbox is imported correctly
-    Sandbox,
-    SandboxToolsBase,
-    ThreadMessage,
-)
+from app.tool.local_tool_base import LocalToolsBase, ThreadMessage
 from app.tool.base import ToolResult
 from app.utils.logger import logger
 
+# NOTE: Sandbox and ThreadMessage are imported lazily in the _ensure_sandbox method
+# This avoids importing daytona at startup when runtime=local
 
-# Context = TypeVar("Context")
 _BROWSER_DESCRIPTION = """\
 A sandbox-based browser automation tool that allows interaction with web pages through various actions.
 * This tool provides commands for controlling a browser session in a sandboxed environment
@@ -33,7 +30,7 @@ Key capabilities include:
 
 
 # noinspection PyArgumentList
-class SandboxBrowserTool(SandboxToolsBase):
+class SandboxBrowserTool(LocalToolsBase):
     """Tool for executing tasks in a Daytona sandbox with browser-use capabilities."""
 
     name: str = "sandbox_browser"
@@ -128,12 +125,47 @@ class SandboxBrowserTool(SandboxToolsBase):
     browser_message: Optional[ThreadMessage] = Field(default=None, exclude=True)
 
     def __init__(
-        self, sandbox: Optional[Sandbox] = None, thread_id: Optional[str] = None, **data
+        self, sandbox: Optional[Any] = None, thread_id: Optional[str] = None, **data
     ):
         """Initialize with optional sandbox and thread_id."""
         super().__init__(**data)
-        if sandbox is not None:
-            self._sandbox = sandbox  # Directly set the base class private attribute
+        self._sandbox = sandbox
+        self._initialized = sandbox is not None
+
+    @property
+    def sandbox(self):
+        """Get the sandbox instance, ensuring it exists."""
+        if self._sandbox is None:
+            raise RuntimeError("Sandbox not initialized. Call _ensure_sandbox() first.")
+        return self._sandbox
+
+    async def _ensure_sandbox(self):
+        """Ensure we have a valid sandbox instance, creating it if needed."""
+        if self._initialized:
+            return
+
+        # Lazy imports - only import daytona when runtime=daytona
+        from app.daytona.sandbox import create_sandbox, start_supervisord_session
+        from app.config import config
+
+        if self._sandbox is None:
+            self._sandbox = await create_sandbox(password=config.daytona.VNC_password)
+            start_supervisord_session(self._sandbox)
+            self._initialized = True
+
+            # Print URLs if not already printed
+            if not SandboxBrowserTool._urls_printed:
+                vnc_link = self._sandbox.get_preview_link(6080)
+                website_link = self._sandbox.get_preview_link(8080)
+
+                vnc_url = vnc_link.url if hasattr(vnc_link, "url") else str(vnc_link)
+                website_url = website_link.url if hasattr(website_link, "url") else str(website_link)
+
+                print("\033[95m***")
+                print(f"VNC URL: {vnc_url}")
+                print(f"Website URL: {website_url}")
+                print("***\033[0m")
+                SandboxBrowserTool._urls_printed = True
 
     def _validate_base64_image(
         self, base64_string: str, max_size_mb: int = 10
@@ -231,12 +263,6 @@ class SandboxBrowserTool(SandboxToolsBase):
                             result["image_validation_error"] = validation_message
                             del result["screenshot_base64"]
 
-                    # added_message = await self.thread_manager.add_message(
-                    #     thread_id=self.thread_id,
-                    #     type="browser_state",
-                    #     content=result,
-                    #     is_llm_message=False
-                    # )
                     message = ThreadMessage(
                         type="browser_state", content=result, is_llm_message=False
                     )
@@ -245,8 +271,6 @@ class SandboxBrowserTool(SandboxToolsBase):
                         "success": result.get("success", False),
                         "message": result.get("message", "Browser action completed"),
                     }
-                    #         if added_message and 'message_id' in added_message:
-                    #             success_response['message_id'] = added_message['message_id']
                     for field in [
                         "url",
                         "title",
@@ -293,23 +317,7 @@ class SandboxBrowserTool(SandboxToolsBase):
     ) -> ToolResult:
         """
         Execute a browser action in the sandbox environment.
-        Args:
-            action: The browser action to perform
-            url: URL for navigation
-            index: Element index for interaction
-            text: Text for input or scroll actions
-            amount: Pixel amount to scroll
-            page_id: Tab ID for tab management
-            keys: Keys to send for keyboard actions
-            seconds: Seconds to wait
-            x: X coordinate for click/drag
-            y: Y coordinate for click/drag
-            element_source: Source element for drag and drop
-            element_target: Target element for drag and drop
-        Returns:
-            ToolResult with the action's output or error
         """
-        # async with self.lock:
         try:
             # Navigation actions
             if action == "navigate_to":
@@ -318,7 +326,7 @@ class SandboxBrowserTool(SandboxToolsBase):
                 return await self._execute_browser_action("navigate_to", {"url": url})
             elif action == "go_back":
                 return await self._execute_browser_action("go_back", {})
-                # Interaction actions
+            # Interaction actions
             elif action == "click_element":
                 if index is None:
                     return self.fail_response("Index is required for click_element")
@@ -337,7 +345,7 @@ class SandboxBrowserTool(SandboxToolsBase):
                 if not keys:
                     return self.fail_response("Keys are required for send_keys")
                 return await self._execute_browser_action("send_keys", {"keys": keys})
-                # Tab management
+            # Tab management
             elif action == "switch_tab":
                 if page_id is None:
                     return self.fail_response("Page ID is required for switch_tab")
@@ -350,7 +358,7 @@ class SandboxBrowserTool(SandboxToolsBase):
                 return await self._execute_browser_action(
                     "close_tab", {"page_id": page_id}
                 )
-                # Scrolling actions
+            # Scrolling actions
             elif action == "scroll_down":
                 params = {"amount": amount} if amount is not None else {}
                 return await self._execute_browser_action("scroll_down", params)
@@ -366,9 +374,7 @@ class SandboxBrowserTool(SandboxToolsBase):
             # Dropdown actions
             elif action == "get_dropdown_options":
                 if index is None:
-                    return self.fail_response(
-                        "Index is required for get_dropdown_options"
-                    )
+                    return self.fail_response("Index is required for get_dropdown_options")
                 return await self._execute_browser_action(
                     "get_dropdown_options", {"index": index}
                 )
@@ -380,7 +386,7 @@ class SandboxBrowserTool(SandboxToolsBase):
                 return await self._execute_browser_action(
                     "select_dropdown_option", {"index": index, "text": text}
                 )
-                # Coordinate-based actions
+            # Coordinate-based actions
             elif action == "click_coordinates":
                 if x is None or y is None:
                     return self.fail_response(
@@ -445,6 +451,6 @@ class SandboxBrowserTool(SandboxToolsBase):
             return ToolResult(error=f"Failed to get browser state: {str(e)}")
 
     @classmethod
-    def create_with_sandbox(cls, sandbox: Sandbox) -> "SandboxBrowserTool":
+    def create_with_sandbox(cls, sandbox: Any) -> "SandboxBrowserTool":
         """Factory method to create a tool with sandbox."""
         return cls(sandbox=sandbox)

@@ -1,14 +1,11 @@
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import Field, model_validator
 
 from app.agent.browser import BrowserContextHelper
 from app.agent.toolcall import ToolCallAgent
 from app.config import config
-from app.daytona.sandbox import create_sandbox, delete_sandbox
-from app.daytona.tool_base import SandboxToolsBase
-from app.logger import logger
-from app.prompt.manus import NEXT_STEP_PROMPT, SYSTEM_PROMPT
+from app.browser.runtime import create_browser_runtime
 from app.tool import Terminate, ToolCollection
 from app.tool.ask_human import AskHuman
 from app.tool.mcp import MCPClients, MCPClientTool
@@ -16,6 +13,8 @@ from app.tool.sandbox.sb_browser_tool import SandboxBrowserTool
 from app.tool.sandbox.sb_files_tool import SandboxFilesTool
 from app.tool.sandbox.sb_shell_tool import SandboxShellTool
 from app.tool.sandbox.sb_vision_tool import SandboxVisionTool
+from app.logger import logger
+from app.prompt.manus import NEXT_STEP_PROMPT, SYSTEM_PROMPT
 
 
 class SandboxManus(ToolCallAgent):
@@ -53,6 +52,7 @@ class SandboxManus(ToolCallAgent):
     )  # server_id -> url/command
     _initialized: bool = False
     sandbox_link: Optional[dict[str, dict[str, str]]] = Field(default_factory=dict)
+    browser_runtime: Optional[Any] = Field(default=None, exclude=True)
 
     @model_validator(mode="after")
     def initialize_helper(self) -> "SandboxManus":
@@ -73,10 +73,53 @@ class SandboxManus(ToolCallAgent):
         self,
         password: str = config.daytona.VNC_password,
     ) -> None:
+        """Initialize sandbox tools based on browser runtime configuration."""
         try:
-            # 创建新沙箱
+            runtime = config.browser_config.runtime if config.browser_config else "local"
+
+            if runtime == "daytona":
+                # Daytona mode - use sandbox tools
+                await self._initialize_daytona_tools(password)
+            else:
+                # Local mode - use local tools
+                await self._initialize_local_tools()
+
+        except Exception as e:
+            logger.error(f"Error initializing sandbox tools: {e}")
+            raise
+
+    async def _initialize_local_tools(self):
+        """Initialize local tools (default mode - no Daytona)."""
+        from app.browser.runtime import create_browser_runtime
+        from app.tool.browser_use_tool import BrowserUseTool
+
+        # Create browser runtime
+        if self.browser_runtime is None:
+            self.browser_runtime = create_browser_runtime()
+        await self.browser_runtime.initialize()
+
+        # Create browser tool wrapping the runtime
+        browser_tool = BrowserUseTool(browser_runtime=self.browser_runtime)
+
+        # Add local tools
+        local_tools = [
+            browser_tool,
+            SandboxFilesTool(),  # Local files tool
+            SandboxShellTool(),  # Local shell tool
+            SandboxVisionTool(),  # Local vision tool
+        ]
+        self.available_tools.add_tools(*local_tools)
+        SandboxToolsBase._urls_printed = True
+        logger.info("Local tools initialized successfully")
+
+    async def _initialize_daytona_tools(self, password: str):
+        """Initialize Daytona sandbox tools."""
+        try:
+            # Lazy import Daytona
+            from app.daytona.sandbox import create_sandbox, start_supervisord_session
+
             if password:
-                sandbox = create_sandbox(password=password)
+                sandbox = await create_sandbox(password=password)
                 self.sandbox = sandbox
             else:
                 raise ValueError("password must be provided")
@@ -107,7 +150,7 @@ class SandboxManus(ToolCallAgent):
             self.available_tools.add_tools(*sb_tools)
 
         except Exception as e:
-            logger.error(f"Error initializing sandbox tools: {e}")
+            logger.error(f"Error initializing Daytona sandbox tools: {e}")
             raise
 
     async def initialize_mcp_servers(self) -> None:
@@ -177,6 +220,7 @@ class SandboxManus(ToolCallAgent):
     async def delete_sandbox(self, sandbox_id: str) -> None:
         """Delete a sandbox by ID."""
         try:
+            from app.daytona.sandbox import delete_sandbox
             await delete_sandbox(sandbox_id)
             logger.info(f"Sandbox {sandbox_id} deleted successfully")
             if sandbox_id in self.sandbox_link:
@@ -192,7 +236,8 @@ class SandboxManus(ToolCallAgent):
         # Disconnect from all MCP servers only if we were initialized
         if self._initialized:
             await self.disconnect_mcp_server()
-            await self.delete_sandbox(self.sandbox.id if self.sandbox else "unknown")
+            if hasattr(self, 'sandbox') and self.sandbox:
+                await self.delete_sandbox(self.sandbox.id if self.sandbox else "unknown")
             self._initialized = False
 
     async def think(self) -> bool:
@@ -221,3 +266,7 @@ class SandboxManus(ToolCallAgent):
         self.next_step_prompt = original_prompt
 
         return result
+
+
+# Import SandboxToolsBase for backward compatibility
+from app.tool.local_tool_base import LocalToolsBase as SandboxToolsBase
