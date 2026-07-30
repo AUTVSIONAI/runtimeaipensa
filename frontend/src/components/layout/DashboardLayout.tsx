@@ -11,7 +11,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { sidebarOpen, rightPanelOpen } = useUIStore();
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden bg-background">
+    <div className="h-screen w-screen flex overflow-hidden bg-background" suppressHydrationWarning>
       {/* Sidebar */}
       <Sidebar />
 

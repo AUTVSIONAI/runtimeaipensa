@@ -33,6 +33,7 @@ export function Avatar({ state = 'idle', size = 'md', className }: AvatarProps) 
       className={cn('relative flex items-center justify-center', sizeClasses[size], className)}
       animate={{ scale: state === 'speaking' ? [1, 1.05, 1] : 1 }}
       transition={{ duration: 0.8, repeat: Infinity, ease: 'easeInOut' }}
+      suppressHydrationWarning
     >
       {/* Outer rings for active states */}
       {['listening', 'thinking', 'speaking', 'error'].includes(state) && (

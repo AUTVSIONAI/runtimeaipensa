@@ -252,14 +252,14 @@ export function ChatPanel() {
     // Stream response from agent loop (or fallback to simple LLM)
     if (useAgentMode) {
       console.log('[ChatPanel] Starting agent stream...');
-      // Map active skills to actual tool names
+      // Map active skills to actual tool names (must match backend tool names exactly)
       const skillToTools: Record<string, string[]> = {
         'web-search': ['web_search'],
-        'code-executor': ['execute_python', 'execute_shell'],
-        'browser-automation': ['browser_navigate', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_get_state'],
-        'file-operations': ['read_file', 'write_file', 'list_files'],
+        'code-executor': ['execute_python', 'execute_shell', 'http_get', 'http_post'],
+        'browser-automation': ['browser_navigate', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_get_state', 'browser_scroll'],
+        'file-operations': ['read_file', 'write_file', 'list_files', 'execute_shell'],
         'terminal': ['execute_shell'],
-        'tool-manager': [], // Tool manager uses a different API
+        'tool-manager': ['web_search', 'execute_python', 'execute_shell', 'read_file', 'write_file', 'list_files', 'http_get', 'http_post'],
       };
       const availableTools = activeSkills.flatMap(skill => skillToTools[skill] || []);
       await streamAgentResponse(userMessage, availableTools);
