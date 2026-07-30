@@ -510,62 +510,65 @@ class StreamingAgentLoop(AgentLoop):
 
                     # Accumulate tool calls from streaming
                     if chunk.tool_calls:
-                        # DEBUG
-                        print(f"DEBUG StreamingAgentLoop: chunk.tool_calls = {chunk.tool_calls}")
                         # Merge streaming tool calls
-                        # Handle both formats: with index (OpenAI) and without (some providers like NVIDIA NIM)
-                        for tc in chunk.tool_calls:
-                            # If tool_call has index, use it
-                            if "index" in tc and tc["index"] is not None:
-                                idx = tc["index"]
-                            else:
-                                # For backends that don't provide index (e.g., NVIDIA NIM):
-                                # - If this chunk has a function.name, it's a NEW tool call (start)
-                                # - If function.name is None/missing but function.arguments is a string (not None), it's a CONTINUATION of the last tool call
-                                func = tc.get("function", {})
-                                func_name = func.get("name") if isinstance(func, dict) else None
-                                func_args = func.get("arguments") if isinstance(func, dict) else None
+                        # Handle both formats:
+                        # 1. Indexed format (OpenAI): each tool_call has an "index" field
+                        # 2. Non-indexed format (NVIDIA NIM): tool_calls don't have index;
+                        #    - new tool call starts when function.name is present
+                        #    - continuation when function.name is missing but function.arguments is a string
 
-                                print(f"DEBUG: func_name={func_name}, func_args={func_args}, accumulated_tool_calls_len={len(accumulated_tool_calls)}")
+                        # Determine format: check if ANY tool_call has an index
+                        has_index = any("index" in tc and tc["index"] is not None for tc in chunk.tool_calls)
+
+                        if has_index:
+                            # OpenAI indexed format - use the provided index
+                            for tc in chunk.tool_calls:
+                                idx = tc.get("index", 0)
+                                # Ensure we have enough slots
+                                while len(accumulated_tool_calls) <= idx:
+                                    accumulated_tool_calls.append({
+                                        "id": "",
+                                        "type": "function",
+                                        "function": {"name": "", "arguments": ""}
+                                    })
+                                # Update fields if present
+                                if tc.get("id"):
+                                    accumulated_tool_calls[idx]["id"] = tc["id"]
+                                if tc.get("function"):
+                                    func = tc["function"]
+                                    if isinstance(func, dict):
+                                        if func.get("name"):
+                                            accumulated_tool_calls[idx]["function"]["name"] = func["name"]
+                                        args = func.get("arguments")
+                                        if isinstance(args, str):
+                                            accumulated_tool_calls[idx]["function"]["arguments"] += args
+                        else:
+                            # Non-indexed format (NVIDIA NIM): use heuristic
+                            # Each tool_call in the chunk is either a new tool call or continuation
+                            for tc in chunk.tool_calls:
+                                func = tc.get("function", {}) if isinstance(tc.get("function"), dict) else {}
+                                func_name = func.get("name")
+                                func_args = func.get("arguments")
 
                                 if func_name:
-                                    # New tool call started (even if arguments is None in first chunk)
-                                    idx = len(accumulated_tool_calls)
+                                    # New tool call started
+                                    new_tc = {
+                                        "id": tc.get("id", ""),
+                                        "type": "function",
+                                        "function": {"name": func_name, "arguments": func_args if isinstance(func_args, str) else ""}
+                                    }
+                                    accumulated_tool_calls.append(new_tc)
                                 elif accumulated_tool_calls and isinstance(func_args, str):
-                                    # Continuation of the last tool call (arguments being streamed as string)
-                                    idx = len(accumulated_tool_calls) - 1
+                                    # Continuation of the last tool call
+                                    accumulated_tool_calls[-1]["function"]["arguments"] += func_args
                                 else:
-                                    # Fallback: treat as new tool call
-                                    idx = len(accumulated_tool_calls)
-
-                            # Ensure we have enough slots
-                            while len(accumulated_tool_calls) <= idx:
-                                accumulated_tool_calls.append({
-                                    "id": "",
-                                    "type": "function",
-                                    "function": {"name": "", "arguments": ""}
-                                })
-                            # Safely update fields if they exist
-                            if tc.get("id"):
-                                try:
-                                    accumulated_tool_calls[idx]["id"] = tc["id"]
-                                except (IndexError, KeyError):
-                                    pass
-                            if tc.get("function"):
-                                func = tc["function"]
-                                if isinstance(func, dict):
-                                    if func.get("name"):
-                                        try:
-                                            accumulated_tool_calls[idx]["function"]["name"] = func["name"]
-                                        except (IndexError, KeyError):
-                                            pass
-                                    # Only concatenate if arguments is a string (not None)
-                                    args = func.get("arguments")
-                                    if isinstance(args, str):
-                                        try:
-                                            accumulated_tool_calls[idx]["function"]["arguments"] += args
-                                        except (IndexError, KeyError):
-                                            pass
+                                    # Fallback: treat as new tool call (edge case)
+                                    new_tc = {
+                                        "id": tc.get("id", ""),
+                                        "type": "function",
+                                        "function": {"name": func_name or "", "arguments": func_args if isinstance(func_args, str) else ""}
+                                    }
+                                    accumulated_tool_calls.append(new_tc)
 
                     if chunk.is_final:
                         # Stream finished
