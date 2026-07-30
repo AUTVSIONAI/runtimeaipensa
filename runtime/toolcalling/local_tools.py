@@ -242,6 +242,123 @@ class LocalToolsModule(ToolModule):
             self._tool_web_search,
         )
 
+        # Browser automation tools
+        await self.register_tool(
+            ToolDefinition(
+                name="browser_navigate",
+                description="Navigate browser to URL",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "url": {"type": "string", "description": "URL to navigate to"},
+                        "session_id": {"type": "string", "description": "Browser session ID (optional, creates new if not provided)"},
+                    },
+                    "required": ["url"],
+                },
+                returns={"type": "object", "properties": {"session_id": {"type": "string"}, "url": {"type": "string"}, "title": {"type": "string"}}},
+                category="browser",
+                tags=["browser", "navigate"],
+            ),
+            self._tool_browser_navigate,
+        )
+
+        await self.register_tool(
+            ToolDefinition(
+                name="browser_click",
+                description="Click element by index or selector",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "Browser session ID"},
+                        "index": {"type": "integer", "description": "Element index (from browser_get_state)"},
+                        "selector": {"type": "string", "description": "CSS selector (alternative to index)"},
+                    },
+                    "required": ["session_id"],
+                },
+                returns={"type": "object", "properties": {"success": {"type": "boolean"}, "message": {"type": "string"}}},
+                category="browser",
+                tags=["browser", "click"],
+            ),
+            self._tool_browser_click,
+        )
+
+        await self.register_tool(
+            ToolDefinition(
+                name="browser_type",
+                description="Type text into element",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "Browser session ID"},
+                        "index": {"type": "integer", "description": "Element index"},
+                        "text": {"type": "string", "description": "Text to type"},
+                    },
+                    "required": ["session_id", "index", "text"],
+                },
+                returns={"type": "object", "properties": {"success": {"type": "boolean"}, "message": {"type": "string"}}},
+                category="browser",
+                tags=["browser", "type", "input"],
+            ),
+            self._tool_browser_type,
+        )
+
+        await self.register_tool(
+            ToolDefinition(
+                name="browser_screenshot",
+                description="Take screenshot of current page",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "Browser session ID"},
+                        "full_page": {"type": "boolean", "description": "Capture full page", "default": True},
+                    },
+                    "required": ["session_id"],
+                },
+                returns={"type": "object", "properties": {"screenshot_base64": {"type": "string"}}},
+                category="browser",
+                tags=["browser", "screenshot"],
+            ),
+            self._tool_browser_screenshot,
+        )
+
+        await self.register_tool(
+            ToolDefinition(
+                name="browser_get_state",
+                description="Get current browser state (interactive elements, URL, title)",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "Browser session ID"},
+                    },
+                    "required": ["session_id"],
+                },
+                returns={"type": "object", "properties": {"url": {"type": "string"}, "title": {"type": "string"}, "interactive_elements": {"type": "array"}, "screenshot_base64": {"type": "string"}}},
+                category="browser",
+                tags=["browser", "state"],
+            ),
+            self._tool_browser_get_state,
+        )
+
+        await self.register_tool(
+            ToolDefinition(
+                name="browser_scroll",
+                description="Scroll page up or down",
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string", "description": "Browser session ID"},
+                        "direction": {"type": "string", "description": "Scroll direction", "enum": ["up", "down"]},
+                        "amount": {"type": "integer", "description": "Pixels to scroll", "default": 500},
+                    },
+                    "required": ["session_id", "direction"],
+                },
+                returns={"type": "object", "properties": {"success": {"type": "boolean"}, "message": {"type": "string"}}},
+                category="browser",
+                tags=["browser", "scroll"],
+            ),
+            self._tool_browser_scroll,
+        )
+
     async def start(self) -> None:
         self.state = ModuleState.RUNNING
         logger.info("LocalToolsModule started")
@@ -583,3 +700,115 @@ class LocalToolsModule(ToolModule):
         tool = WebSearch()
         result = await tool.execute(query=query, num_results=num_results)
         return {"results": [r.model_dump() for r in result.results]}
+
+    # ============================================
+    # Browser Tool Handlers
+    # ============================================
+
+    async def _tool_browser_navigate(
+        self,
+        url: str,
+        session_id: Optional[str] = None,
+        context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        browser = self._runtime.get_browser()
+        if not browser:
+            raise RuntimeError("Browser module not available")
+
+        # Create new session if not provided
+        if not session_id:
+            session = await browser.create_session(url)
+            session_id = session.session_id
+        else:
+            # Navigate existing session
+            result = await browser.execute_action(session_id, "navigate", {"url": url})
+            if not result.success:
+                raise RuntimeError(f"Navigation failed: {result.error}")
+
+            state = await browser.get_state(session_id)
+            return {"session_id": session_id, "url": state.url, "title": state.title}
+
+        session = await browser.get_state(session_id)
+        return {"session_id": session_id, "url": session.url, "title": session.title}
+
+    async def _tool_browser_click(
+        self,
+        session_id: str,
+        index: Optional[int] = None,
+        selector: Optional[str] = None,
+        context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        browser = self._runtime.get_browser()
+        if not browser:
+            raise RuntimeError("Browser module not available")
+
+        if index is not None:
+            action = "click_element_by_index"
+            params = {"index": index}
+        elif selector:
+            action = "click"
+            params = {"selector": selector}
+        else:
+            raise ValueError("Either index or selector must be provided")
+
+        result = await browser.execute_action(session_id, action, params)
+        return {"success": result.success, "message": result.error or "Clicked successfully"}
+
+    async def _tool_browser_type(
+        self,
+        session_id: str,
+        index: int,
+        text: str,
+        context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        browser = self._runtime.get_browser()
+        if not browser:
+            raise RuntimeError("Browser module not available")
+
+        result = await browser.execute_action(session_id, "type", {"index": index, "text": text})
+        return {"success": result.success, "message": result.error or "Typed successfully"}
+
+    async def _tool_browser_screenshot(
+        self,
+        session_id: str,
+        full_page: bool = True,
+        context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        browser = self._runtime.get_browser()
+        if not browser:
+            raise RuntimeError("Browser module not available")
+
+        screenshot = await browser.take_screenshot(session_id, full_page)
+        return {"screenshot_base64": screenshot}
+
+    async def _tool_browser_get_state(
+        self,
+        session_id: str,
+        context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        browser = self._runtime.get_browser()
+        if not browser:
+            raise RuntimeError("Browser module not available")
+
+        state = await browser.get_state(session_id)
+        return {
+            "session_id": session_id,
+            "url": state.url,
+            "title": state.title,
+            "interactive_elements": state.interactive_elements,
+            "screenshot_base64": state.screenshot_base64,
+        }
+
+    async def _tool_browser_scroll(
+        self,
+        session_id: str,
+        direction: str,
+        amount: int = 500,
+        context: Optional[Dict] = None
+    ) -> Dict[str, Any]:
+        browser = self._runtime.get_browser()
+        if not browser:
+            raise RuntimeError("Browser module not available")
+
+        result = await browser.execute_action(session_id, "scroll", {"direction": direction, "amount": amount})
+        return {"success": result.success, "message": result.error or "Scrolled successfully"}

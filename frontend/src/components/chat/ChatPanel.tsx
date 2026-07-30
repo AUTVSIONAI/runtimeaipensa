@@ -65,14 +65,14 @@ const defaultSkills = [
   'file-operations',
 ];
 
-// Map skill IDs to actual tool names
+// Map skill IDs to actual tool names (must match backend tool names)
 const skillToTools: Record<string, string[]> = {
   'web-search': ['web_search'],
-  'code-executor': ['execute_python', 'execute_shell'],
-  'browser-automation': [], // Browser tools might be separate
-  'file-operations': ['read_file', 'write_file', 'list_files'],
+  'code-executor': ['execute_python', 'execute_shell', 'http_get', 'http_post'],
+  'browser-automation': ['browser_navigate', 'browser_click', 'browser_type', 'browser_screenshot', 'browser_get_state', 'browser_scroll'],
+  'file-operations': ['read_file', 'write_file', 'list_files', 'execute_shell'],
   'terminal': ['execute_shell'],
-  'tool-manager': [], // Tool manager might use a different mechanism
+  'tool-manager': ['web_search', 'execute_python', 'execute_shell', 'read_file', 'write_file', 'list_files', 'http_get', 'http_post'],
 };
 
 export function ChatPanel() {
