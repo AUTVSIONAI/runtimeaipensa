@@ -1,9 +1,0 @@
-{
-  "/dashboard/preview/page": "app/dashboard/preview/page.js",
-  "/dashboard/workspace/page": "app/dashboard/workspace/page.js",
-  "/dashboard/chat/page": "app/dashboard/chat/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/settings/page": "app/dashboard/settings/page.js",
-  "/dashboard/browser/page": "app/dashboard/browser/page.js",
-  "/dashboard/plugins/page": "app/dashboard/plugins/page.js"
-}
