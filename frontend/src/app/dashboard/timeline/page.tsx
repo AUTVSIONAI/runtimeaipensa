@@ -24,12 +24,23 @@ const EVENT_CATEGORIES = [
 ];
 
 export default function TimelinePage() {
+  console.log('[TimelinePage] Component rendered, events count:', useTimelineStore.getState().events.length);
   const { events, filters, setFilters, selectedCorrelationId, setSelectedCorrelation } = useTimelineStore();
   const { rightPanelTab, setRightPanelTab, rightPanelOpen, setRightPanelOpen } = useUIStore();
   const [searchText, setSearchText] = useState(filters.text);
   const [expandedCorrelation, setExpandedCorrelation] = useState<string | null>(selectedCorrelationId);
   const [selectedEvent, setSelectedEvent] = useState<RuntimeEvent | null>(null);
   const [selectedCorrelationDetail, setSelectedCorrelationDetail] = useState<string | null>(null);
+  const [clientLoaded, setClientLoaded] = useState(false);
+
+  useEffect(() => {
+    setClientLoaded(true);
+    console.log('[TimelinePage] Client loaded, events:', events.length);
+  }, [events]);
+
+  useEffect(() => {
+    console.log('[TimelinePage] Events updated:', events.length);
+  }, [events]);
 
   const handleSearchChange = (value: string) => {
     setSearchText(value);

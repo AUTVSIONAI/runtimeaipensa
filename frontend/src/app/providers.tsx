@@ -28,61 +28,24 @@ export function Providers({ children }: { children: ReactNode }) {
 
   // Initialize runtime store and WebSocket connection
   useRuntimeInit();
+  console.log('[Providers] useRuntimeInit called');
   // Initialize WebSocket event subscriptions for chat/timeline
   useRuntimeEvents();
+  console.log('[Providers] useRuntimeEvents called');
 
   // Initialize settings on app load
   const loadSettings = useSettingsStore((s) => s.loadSettings);
-  const loadPlugins = usePluginsStore((s) => s.loadPlugins);
-  console.log('[Providers] Render - loadPlugins:', typeof loadPlugins, 'loadSettings:', typeof loadSettings);
-
-  // Client-side mounted effect - runs AFTER hydration
   useEffect(() => {
-    console.log('[Providers] >>>>>>> IMMEDIATE EFFECT - Client side mounted! <<<<<<<');
-    (window as any).__CLIENT_MOUNTED_EFFECT_RAN__ = true;
-
-    // Force a setTimeout to ensure we're truly client-side
-    setTimeout(() => {
-      console.log('[Providers] >>>>>>> SETTIMEOUT CALLBACK - Definitely client side! <<<<<<<');
-      (window as any).__CLIENT_TIMEOUT_RAN__ = true;
-
-      // Now call loadPlugins
-      console.log('[Providers] >>>>>>> Calling loadPlugins from setTimeout <<<<<<<');
-      loadSettings();
-      loadPlugins().then(() => {
-        console.log('[Providers] >>>>>>> loadPlugins RESOLVED <<<<<<<');
-      }).catch(e => {
-        console.error('[Providers] >>>>>>> loadPlugins REJECTED:', e);
-      });
-    }, 0);
-  }, []); // Run once on mount
-
-  // Also load on client side after hydration (backup)
-  useEffect(() => {
-    console.log('[Providers] >>>>> BACKUP useEffect START <<<<<');
-    console.log('[Providers] loadPlugins:', loadPlugins);
-    console.log('[Providers] loadSettings:', loadSettings);
+    console.log('[Providers] Loading settings on client mount');
     loadSettings();
-    console.log('[Providers] loadSettings() called');
-    const pluginsPromise = loadPlugins();
-    console.log('[Providers] loadPlugins() called, promise:', pluginsPromise);
-    pluginsPromise.then(() => {
-      console.log('[Providers] >>>>> loadPlugins() promise RESOLVED <<<<<');
-    }).catch((e) => {
-      console.error('[Providers] >>>>> loadPlugins() promise REJECTED:', e);
-    });
-    console.log('[Providers] >>>>> BACKUP useEffect END <<<<<');
-    (window as any).__CLIENT_SIDE_RAN__ = true;
-  }, [loadSettings, loadPlugins]);
+  }, [loadSettings]);
 
-  // Debug: Check store state
-  const plugins = usePluginsStore((s) => s.plugins);
-  const isLoading = usePluginsStore((s) => s.isLoading);
-  const error = usePluginsStore((s) => s.error);
-
+  // Initialize plugins on app load
+  const loadPlugins = usePluginsStore((s) => s.loadPlugins);
   useEffect(() => {
-    console.log('[Providers] *** STORE SUBSCRIPTION FIRED ***', { pluginsCount: plugins.length, isLoading, error });
-  }, [plugins, isLoading, error]);
+    console.log('[Providers] Loading plugins on client mount');
+    loadPlugins();
+  }, [loadPlugins]);
 
   return (
     <QueryClientProvider client={queryClient}>

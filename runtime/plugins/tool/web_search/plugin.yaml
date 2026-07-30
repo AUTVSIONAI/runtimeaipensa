@@ -1,0 +1,90 @@
+name: "web_search"
+version: "1.2.0"
+type: "tool"
+class_name: "WebSearchPlugin"
+entry_point: "web_search.py"
+description: "Busca web via SerpAPI, Bing, Google Custom Search"
+author: "aipensa"
+license: "MIT"
+homepage: "https://github.com/aipensa/plugins/web_search"
+repository: "https://github.com/aipensa/plugins"
+tags: ["search", "web", "serpapi", "bing", "google"]
+
+dependencies:
+  - "network:httpx"
+  - "runtime:conversation"
+  - "skill:llm_generation"
+
+capabilities:
+  - "web_search"
+  - "news_search"
+  - "academic_search"
+
+config_schema:
+  type: "object"
+  properties:
+    default_engine:
+      type: "string"
+      enum: ["serpapi", "bing", "google"]
+      default: "serpapi"
+      description: "Default search engine"
+    engines:
+      type: "object"
+      properties:
+        serpapi:
+          type: "object"
+          properties:
+            api_key:
+              type: "string"
+              format: "password"
+              description: "SerpAPI Key"
+          required: ["api_key"]
+        bing:
+          type: "object"
+          properties:
+            api_key:
+              type: "string"
+              format: "password"
+            endpoint:
+              type: "string"
+              format: "uri"
+          required: ["api_key", "endpoint"]
+        google:
+          type: "object"
+          properties:
+            api_key:
+              type: "string"
+              format: "password"
+            cx:
+              type: "string"
+              description: "Custom Search Engine ID"
+          required: ["api_key", "cx"]
+    timeout_seconds:
+      type: "integer"
+      minimum: 5
+      maximum: 60
+      default: 30
+    max_results:
+      type: "integer"
+      minimum: 1
+      maximum: 100
+      default: 10
+  required: ["default_engine", "engines"]
+
+permissions_required:
+  - "plugin.use:web_search"
+  - "provider.use:serpapi"
+
+rate_limits:
+  requests_per_minute: 60
+  tokens_per_minute: 10000
+
+health_check:
+  enabled: true
+  interval_seconds: 60
+  timeout_seconds: 10
+
+marketplace:
+  category: "search"
+  pricing: "free"
+  verified: true

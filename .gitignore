@@ -200,3 +200,10 @@ cython_debug/
 
 # node
 node_modules
+.next/
+out/
+
+# Frontend build
+frontend/.next/
+frontend/out/
+frontend/node_modules/

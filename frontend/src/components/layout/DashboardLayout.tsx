@@ -6,36 +6,18 @@ import { useUIStore } from '@/stores/uiStore';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { RightPanel } from './RightPanel';
-import { useEffect, useState } from 'react';
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { sidebarOpen, rightPanelOpen } = useUIStore();
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  if (!mounted) {
-    return (
-      <div className="h-screen w-screen flex overflow-hidden bg-background">
-        <div className="w-64 lg:w-72 bg-card border-r border-border h-screen" />
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="h-16 bg-card border-b border-border" />
-          <main className="flex-1 overflow-auto p-4 lg:p-6" />
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="h-screen w-screen flex overflow-hidden bg-background">
       {/* Sidebar */}
-      <Sidebar suppressHydrationWarning />
+      <Sidebar />
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header suppressHydrationWarning />
+        <Header />
         <main className="flex-1 overflow-auto p-4 lg:p-6">
           {children}
         </main>

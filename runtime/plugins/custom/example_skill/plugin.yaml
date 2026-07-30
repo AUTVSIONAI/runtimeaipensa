@@ -1,0 +1,45 @@
+name: "example_skill"
+version: "1.0.0"
+type: "custom"
+class_name: "ExampleSkillPlugin"
+entry_point: "example_skill.py"
+description: "Plugin de exemplo para demonstrar estrutura de skill personalizada"
+author: "aipensa"
+license: "MIT"
+tags: ["example", "skill", "demo", "custom"]
+
+dependencies:
+  - "runtime:conversation"
+  - "skill:llm_generation"
+
+capabilities:
+  - "example_task"
+  - "demo_generation"
+
+config_schema:
+  type: "object"
+  properties:
+    greeting:
+      type: "string"
+      default: "Hello from Example Skill!"
+      description: "Default greeting message"
+    max_tokens:
+      type: "integer"
+      minimum: 100
+      maximum: 4096
+      default: 512
+  required: []
+
+min_runtime_version: "1.0.0"
+python_requires: ">=3.10"
+install_requires: []
+
+health_check:
+  enabled: true
+  interval_seconds: 300
+  timeout_seconds: 5
+
+marketplace:
+  category: "custom"
+  pricing: "free"
+  verified: true

@@ -11,12 +11,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useState, useMemo } from 'react';
 import type { RuntimeEvent } from '@/types/runtime';
 
-const EVENT_CATEGORIES = [
-  'RUNTIME', 'MODULE', 'TASK', 'AGENT', 'CONVERSATION', 'MESSAGE',
-  'WORKFLOW', 'JOB', 'QUEUE', 'NOTIFICATION', 'STORAGE', 'AUTH',
-  'WORKSPACE', 'KNOWLEDGE', 'SKILL', 'LLM', 'VOICE', 'VISION',
-  'VIDEO', 'IMAGE', 'EMBEDDING', 'RAG', 'REASONING', 'SYSTEM',
+// Map event sources to display categories
+const EVENT_SOURCE_CATEGORIES = [
+  'runtime', 'module', 'task', 'agent', 'conversation', 'message',
+  'workflow', 'job', 'queue', 'notification', 'storage', 'auth',
+  'workspace', 'knowledge', 'skill', 'llm', 'voice', 'vision',
+  'video', 'image', 'embedding', 'rag', 'reasoning', 'system',
 ];
+
+const EVENT_CATEGORIES = EVENT_SOURCE_CATEGORIES.map(c => c.toUpperCase());
 
 function EventItem({ event, onSelect }: { event: RuntimeEvent; onSelect: (id: string) => void }) {
   const isSelected = event.correlation_id === useTimelineStore.getState().selectedCorrelationId;
@@ -77,7 +80,7 @@ export function TimelinePanel() {
 
   const filteredEvents = useMemo(() => {
     return events.filter((event) => {
-      if (filters.eventTypes.length > 0 && !filters.eventTypes.some(et => event.event_type.startsWith(et))) return false;
+      if (filters.eventTypes.length > 0 && !filters.eventTypes.some(et => event.source.toUpperCase().startsWith(et.toUpperCase()))) return false;
       if (filters.sources.length > 0 && !filters.sources.includes(event.source)) return false;
       if (filters.tags.length > 0 && !filters.tags.some(t => event.tags.includes(t))) return false;
       if (searchText && !JSON.stringify(event.payload).toLowerCase().includes(searchText.toLowerCase())) return false;

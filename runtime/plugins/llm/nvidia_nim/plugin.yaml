@@ -1,0 +1,65 @@
+name: "nvidia_nim"
+version: "2.1.0"
+type: "llm"
+class_name: "NvidiaNIMPlugin"
+entry_point: "nvidia_nim.py"
+description: "NVIDIA NIM LLM Provider Plugin"
+author: "aipensa"
+license: "MIT"
+tags: ["llm", "nvidia", "nim", "inference", "ai"]
+
+dependencies:
+  - "network:httpx"
+  - "runtime:conversation"
+  - "skill:llm_generation"
+
+capabilities:
+  - "chat_completion"
+  - "completion"
+  - "streaming"
+  - "function_calling"
+
+config_schema:
+  type: "object"
+  properties:
+    api_key:
+      type: "string"
+      format: "password"
+      description: "NVIDIA API Key"
+    base_url:
+      type: "string"
+      format: "uri"
+      default: "https://integrate.api.nvidia.com/v1"
+    organization:
+      type: "string"
+      description: "Organization ID"
+    default_model:
+      type: "string"
+      default: "meta/llama-3.1-70b-instruct"
+    timeout_seconds:
+      type: "integer"
+      minimum: 10
+      maximum: 300
+      default: 120
+    max_retries:
+      type: "integer"
+      minimum: 0
+      maximum: 10
+      default: 3
+  required: ["api_key"]
+
+python_requires: ">=3.10"
+install_requires:
+  - "openai>=1.0.0"
+
+min_runtime_version: "1.0.0"
+
+health_check:
+  enabled: true
+  interval_seconds: 60
+  timeout_seconds: 10
+
+marketplace:
+  category: "llm"
+  pricing: "free"
+  verified: true

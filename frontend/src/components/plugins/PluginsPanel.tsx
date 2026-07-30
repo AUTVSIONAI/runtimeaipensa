@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus,
@@ -13,15 +13,9 @@ import {
   ChevronDown,
   Play,
   Pause,
-  Package,
-  Plug,
   RefreshCw,
-  Bug,
-  Database,
-  AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
 import { usePluginsStore } from '@/stores/pluginsStore';
 import { toast } from '@/hooks/use-toast';
 
@@ -59,45 +53,25 @@ interface Plugin {
 }
 
 export function PluginsPanel() {
-  const {
-    plugins,
-    isLoading,
-    error,
-    pendingActions,
-    loadPlugins,
-    togglePlugin,
-    startPlugin,
-    stopPlugin,
-    setPluginPending,
-  } = usePluginsStore();
+  const plugins = usePluginsStore((s) => s.plugins);
+  const isLoading = usePluginsStore((s) => s.isLoading);
+  const error = usePluginsStore((s) => s.error);
+  const pendingActions = usePluginsStore((s) => s.pendingActions);
+  const loadPlugins = usePluginsStore((s) => s.loadPlugins);
+  const togglePlugin = usePluginsStore((s) => s.togglePlugin);
+  const startPlugin = usePluginsStore((s) => s.startPlugin);
+  const stopPlugin = usePluginsStore((s) => s.stopPlugin);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [showInstallDialog, setShowInstallDialog] = useState(false);
   const [installMethod, setInstallMethod] = useState<'registry' | 'url' | 'file'>('registry');
   const [url, setUrl] = useState('');
 
-  // Debug logging
-  console.log('[PluginsPanel] Component render', { pluginsCount: plugins.length, isLoading, error });
-
-  // Track client-side mount
-  const [clientMounted, setClientMounted] = useState(false);
-  const [clientTimestamp, setClientTimestamp] = useState<string>('');
-
-  // Client-side mounted effect - call loadPlugins on mount
+  // Load plugins on client-side mount
   useEffect(() => {
-    console.log('[PluginsPanel] >>>>> CLIENT MOUNT EFFECT START >>>>>');
-    setClientMounted(true);
-    setClientTimestamp(new Date().toISOString());
-    console.log('[PluginsPanel] clientMounted set to true');
-
-    // Call loadPlugins
-    console.log('[PluginsPanel] >>>>> Calling loadPlugins from mount effect... <<<<<');
-    loadPlugins().then(() => {
-      console.log('[PluginsPanel] >>>>> loadPlugins completed, store now has:', usePluginsStore.getState().plugins.length, 'plugins <<<<<');
-    }).catch(err => {
-      console.error('[PluginsPanel] >>>>> loadPlugins error:', err);
-    });
-    console.log('[PluginsPanel] >>>>> CLIENT MOUNT EFFECT END >>>>>');
-  }, [loadPlugins]); // Run once on mount with loadPlugins in deps
+    console.log('[PluginsPanel] Client mount - loading plugins...');
+    loadPlugins();
+  }, [loadPlugins]);
 
   const filteredPlugins = useMemo(() =>
     plugins.filter(p =>
@@ -108,40 +82,11 @@ export function PluginsPanel() {
     [plugins, searchQuery]
   );
 
-  // Debug: Force re-render on plugins change
-  const [, forceUpdate] = useState({});
-  useEffect(() => {
-    console.log('[PluginsPanel] PLUGINS STATE CHANGED, count:', plugins.length);
-    forceUpdate(s => ({ ...s }));
-  }, [plugins]);
-
-  // Manual reload function for debugging
-  const handleManualReload = async () => {
-    console.log('[PluginsPanel] Manual reload clicked');
-    try {
-      const response = await fetch('/api/plugins');
-      const data = await response.json();
-      console.log('[PluginsPanel] Manual fetch result:', data.plugins?.length, 'plugins');
-      // Also call store's loadPlugins
-      await loadPlugins();
-      console.log('[PluginsPanel] After loadPlugins, store has:', usePluginsStore.getState().plugins.length, 'plugins');
-    } catch (e) {
-      console.error('[PluginsPanel] Manual reload error:', e);
-    }
-  };
-
   return (
     <div className="h-full flex flex-col">
       <div className="p-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold">Plugins & Skills</h2>
-          {/* DEBUG: Show client-side hydration status */}
-          <span className={cn(
-            "text-xs px-2 py-1 rounded",
-            clientMounted ? "text-green-700 bg-green-100" : "text-yellow-700 bg-yellow-100"
-          )}>
-            {clientMounted ? 'Client JS Active' : 'SSR Only'}
-          </span>
           {isLoading && (
             <motion.div
               initial={{ opacity: 0, scale: 0.5 }}
@@ -154,7 +99,7 @@ export function PluginsPanel() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="outline" onClick={handleManualReload} disabled={isLoading}>
+          <Button size="sm" variant="outline" onClick={loadPlugins} disabled={isLoading}>
             <RefreshCw className="h-4 w-4 mr-1" /> Reload
           </Button>
           <Button size="sm" onClick={() => setShowInstallDialog(true)}>
@@ -164,12 +109,6 @@ export function PluginsPanel() {
       </div>
 
       <ScrollArea className="flex-1 p-4 space-y-4">
-        {/* Debug panel - ALWAYS VISIBLE */}
-        <div className="bg-slate-900 text-green-400 p-3 text-xs font-mono rounded mb-4 border border-slate-700">
-          <div>DEBUG: plugins={plugins.length} isLoading={String(isLoading)} error={error || 'null'}</div>
-          <div>Store ref: {usePluginsStore.getState().plugins.length} plugins</div>
-          <div>Client mounted: {String(clientMounted)} {clientTimestamp ? 'at ' + clientTimestamp : ''}</div>
-        </div>
         {error && (
           <Card className="border-destructive/50">
             <CardContent className="p-4 text-destructive flex items-center justify-between">
